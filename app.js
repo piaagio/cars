@@ -374,62 +374,160 @@ function submitInspection() {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('특수차량 체크리스트');
 
+    // Set column widths
     worksheet.columns = [
-        { header: '구분', key: 'type', width: 12 },
-        { header: '일시', key: 'date', width: 20 },
-        { header: '차량번호', key: 'plate', width: 12 },
-        { header: '차량모델', key: 'model', width: 12 },
-        { header: '팀명', key: 'team', width: 15 },
-        { header: '운행자', key: 'operator', width: 12 },
-        { header: '항목', key: 'item', width: 40 },
-        { header: '상태', key: 'status', width: 12 },
-        { header: '세부내용', key: 'detail', width: 30 }
+        { key: 'item', width: 60 },   // A열: 항목
+        { key: 'good', width: 10 },   // B열: 양호/유
+        { key: 'bad', width: 10 }     // C열: 불량/무
     ];
 
-    worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
-    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
-    worksheet.getRow(1).height = 25;
+    // 1. Title Row
+    worksheet.mergeCells('A1:C1');
+    const titleCell = worksheet.getCell('A1');
+    titleCell.value = '특수차량 체크리스트';
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    titleCell.font = { bold: true, size: 16 };
+    worksheet.getRow(1).height = 30;
+
+    // 2. Info Row (Date, Plate, etc.) - Optional, but helpful context above the list
+    worksheet.mergeCells('A2:C2');
+    const infoCell = worksheet.getCell('A2');
+    infoCell.value = `일시: ${date} | 차량: ${selectedVehicle.plate} (${selectedVehicle.model})`;
+    infoCell.alignment = { vertical: 'middle', horizontal: 'right' };
+    infoCell.font = { size: 10 };
+
+    let currentRowIndex = 3;
 
     reportItems.forEach(item => {
-        if (item.type !== 'section') {
-            worksheet.addRow({
-                type: typeText,
-                date: date,
-                plate: selectedVehicle.plate,
-                model: selectedVehicle.model,
-                team: team,
-                operator: operator,
-                item: item.label,
-                status: item.value,
-                detail: item.detail || ''
+        if (item.type === 'section') {
+            // Section Header Row
+            const row = worksheet.getRow(currentRowIndex);
+            row.values = [item.label, '양호', '불량'];
+
+            // Style Section Header
+            row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFBDD7EE' } }; // Light Blue
+            row.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFBDD7EE' } };
+            row.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFBDD7EE' } };
+            row.font = { bold: true };
+            row.alignment = { vertical: 'middle', horizontal: 'center' };
+            row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+
+            // Borders
+            [1, 2, 3].forEach(c => {
+                row.getCell(c).border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
             });
+
+            currentRowIndex++;
+        } else {
+            // Item Row
+            const row = worksheet.getRow(currentRowIndex);
+
+            let goodMark = '';
+            let badMark = '';
+            let itemLabel = item.label;
+
+            // Handle Mileage/Fuel separately
+            if (item.label.includes('Km') || item.label.includes('km')) {
+                // Append value to label for mileage/fuel items
+                itemLabel += `\n[결과] ${item.value}`;
+            } else {
+                // O/X Logic for standard items
+                if (item.value === '양호' || item.value === '유') {
+                    goodMark = 'O';
+                } else if (item.value === '불량' || item.value === '무') {
+                    badMark = 'O'; // Mark 'Bad' column
+                    if (item.detail) {
+                        itemLabel += `\n(불량내용: ${item.detail})`;
+                    }
+                }
+            }
+
+            row.getCell(1).value = itemLabel;
+            row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+
+            // Special handling to match the template's look for the Mileage item
+            if (itemLabel.includes('기름잔량 표기를')) {
+                // If the text doesn't already have the sub-note (it might if we changed the data source, but let's be safe)
+                if (!itemLabel.includes('(기름잔량 4/1')) {
+                    const parts = itemLabel.split('\n[결과]');
+                    // Reconstruct with the sub-note from the image
+                    row.getCell(1).value = parts[0] + '\n(기름잔량 4/1, 4/2, 4/3, 4/4 표기)' + (parts[1] ? '\n[결과]' + parts[1] : '');
+                }
+            }
+
+            row.getCell(2).value = goodMark;
+            row.getCell(2).alignment = { vertical: 'middle', horizontal: 'center' };
+
+            row.getCell(3).value = badMark;
+            row.getCell(3).alignment = { vertical: 'middle', horizontal: 'center' };
+
+            // Borders
+            [1, 2, 3].forEach(c => {
+                row.getCell(c).border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            });
+
+            currentRowIndex++;
         }
     });
 
-    worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber > 1) {
-            row.alignment = { vertical: 'middle', horizontal: 'left' };
-            row.eachCell((cell) => {
-                cell.border = {
-                    top: { style: 'thin' },
-                    left: { style: 'thin' },
-                    bottom: { style: 'thin' },
-                    right: { style: 'thin' }
-                };
-            });
-        }
+    // Footer: Team and Operator
+    const footerStartRow = currentRowIndex;
+
+    // Team Row
+    const teamRow = worksheet.getRow(footerStartRow);
+    teamRow.getCell(1).value = '차량 대여팀';
+    teamRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+    worksheet.mergeCells(`B${footerStartRow}:C${footerStartRow}`);
+    teamRow.getCell(2).value = team;
+    teamRow.getCell(2).alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Operator Row
+    const operatorRow = worksheet.getRow(footerStartRow + 1);
+    operatorRow.getCell(1).value = '운행자';
+    operatorRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+    worksheet.mergeCells(`B${footerStartRow + 1}:C${footerStartRow + 1}`);
+    operatorRow.getCell(2).value = operator;
+    operatorRow.getCell(2).alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Footer Borders
+    [0, 1].forEach(offset => {
+        const r = footerStartRow + offset;
+        worksheet.getRow(r).eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            if (colNumber <= 3) {
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            }
+        });
     });
 
-    workbook.xlsx.writeBuffer().then((buffer) => {
+    // Generate and download/share Excel file
+    workbook.xlsx.writeBuffer().then(async (buffer) => {
+        const fileName = `특수차량체크리스트_${selectedVehicle.plate}_${team}_${new Date().toISOString().split('T')[0]}.xlsx`;
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        saveAs(blob, `특수차량체크리스트_${selectedVehicle.plate}_${team}_${new Date().toISOString().split('T')[0]}.xlsx`);
+        const file = new File([blob], fileName, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+        // Try Web Share API first (Mobile)
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({
+                    files: [file],
+                    title: '특수차량 점검 보고서',
+                    text: `${typeText} ${selectedVehicle.plate} (${team}, ${operator}) 점검 보고서입니다.`
+                });
+                alert('보고서가 공유되었습니다.');
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('Share failed:', error);
+                    saveAs(blob, fileName); // Fallback to download
+                }
+            }
+        } else {
+            // Fallback for PC or unsupported browsers
+            saveAs(blob, fileName);
+            const mailtoLink = `mailto:piaagio@ktmos.co.kr?subject=${encodeURIComponent(`${typeText} ${selectedVehicle.plate}_${team}_${operator}`)}&body=${encodeURIComponent(body)}`;
+            window.location.href = mailtoLink;
+            alert(`보고서가 생성되었습니다. (이메일에 수동으로 첨부해주세요)\n${!isCheckout ? '\n이제 5분 동안 [반납완료] 상태로 유지됩니다.' : ''}`);
+        }
     });
-
-    const mailtoLink = `mailto:piaagio@naver.com?subject=${encodeURIComponent(`${typeText} ${selectedVehicle.plate}_${team}_${operator}`)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailtoLink;
-
-    alert(`보고서가 생성되었습니다. ${!isCheckout ? '\\n이제 5분 동안 [반납완료] 상태로 유지됩니다.' : ''}`);
 
     document.getElementById('input-team').value = '';
     document.getElementById('input-operator').value = '';
