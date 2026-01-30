@@ -499,6 +499,34 @@ function submitInspection() {
         });
     });
 
+    // Add Photos if any
+    if (currentPhotos.length > 0) {
+        let photoRowIndex = footerStartRow + 3;
+        const photoHeader = worksheet.getRow(photoRowIndex);
+        photoHeader.getCell(1).value = '첨부 사진';
+        photoHeader.font = { bold: true };
+        photoRowIndex++;
+
+        currentPhotos.forEach((photoDataUrl, idx) => {
+            const imageId = workbook.addImage({
+                base64: photoDataUrl,
+                extension: 'png',
+            });
+
+            // Position images: 2 images per row
+            const col = (idx % 2) * 4; // 0 or 4 (start at A or E - actually merged so we use visual columns)
+            // Simpler approach: Stack them vertically or 2x2. 
+            // Let's put them in A column, spanning width.
+
+            const rowStart = photoRowIndex + (Math.floor(idx / 2) * 10);
+
+            worksheet.addImage(imageId, {
+                tl: { col: (idx % 2) * 1.5, row: rowStart }, // Adjust column to place side-by-side
+                ext: { width: 300, height: 300 }
+            });
+        });
+    }
+
     // Generate and download/share Excel file
     workbook.xlsx.writeBuffer().then(async (buffer) => {
         const fileName = `특수차량체크리스트_${selectedVehicle.plate}_${team}_${new Date().toISOString().split('T')[0]}.xlsx`;
